@@ -19,9 +19,8 @@ name = 'NATIONS'
 dataset = dataset_to_tensor(os.path.join(DATA_PATH, name), 'train.pickle')
 dataset_t = dataset['tensor']
 print(dataset_t.shape)
-print(np.sum(dataset_t))
+
 # define agent and simulator
-"""
 agent = DRQN_KBC()
 simulator = Simulator(dataset)
 
@@ -35,5 +34,3 @@ for i in range(N_GAMES):
 
 	guess = agent.guess_generate()
 	right, answer = guess_check(guess, verbose=False)
-
-"""

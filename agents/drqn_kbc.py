@@ -33,23 +33,28 @@ class QNetwork(nn.Module):
         Build a network that maps state -> action values.
         """
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
+        x = F.tanh(self.fc2(x))
         return self.fc3(x)
 
 
 class RerruentQNetwork(nn.Module):
     """ Recurrnet Q Network."""
-    def __init__(self, state_size, action_size, lstm_n_layer=1, bidirection=False, state_hidden=64,  fc1_unit=64,
+    def __init__(self, n_states, n_responses, state_size, action_size, lstm_n_layer=1, bidirection=False, state_hidden=64,  fc1_unit=64,
                  fc2_unit = 64):
 
-        super(RerruentQNetwork,self).__init__() ## calls __init__ method of nn.Module class
-        self.bi = bidirection
+        super(RerruentQNetwork,self).__init__()
+        self.n_states = n_states
         self.state_size = state_size
         self.hidden_size = state_hidden
-        self.lstm = nn.GRU(input_size=self.state_size, hidden_size=self.hidden_size, num_layers=self.lstm_n_layer, 
-            batch_first=True, bidirectional=self.bi)
+        self.bi = bidirection
+
+        self.q_embed = nn.Embedding(n_states, state_size)                    # question embedding
+        self.r_embed = nn.Embedding(n_responses, state_size)                 # response embedding
+        self.lstm = nn.GRU(input_size=self.state_size, 
+            hidden_size=self.hidden_size, num_layers=self.lstm_n_layer, 
+            batch_first=True, bidirectional=self.bi)                         # recurrent hidden representation
         self.Qnet = QNetwork(self.stata_hidden_size, action_size, fc1_unit=64,
-            fc2_unit = 64)
+            fc2_unit = 64)                                                   # q value approximation
 
     def forward(self, x):
         """
@@ -98,7 +103,6 @@ class DQN(object):
         self.learn_step_counter += 1
 
         # sample batch transitions
-
         b_s, b_a, b_r, b_s_, _ = self.memory.sample(BATCH_SIZE)
         b_s = torch.FloatTensor(b_s).to(device)
         b_a = torch.LongTensor(b_a.astype(int)).to(device)
@@ -151,7 +155,6 @@ class DRQN(object):
         self.learn_step_counter += 1
 
         # sample batch transitions
-
         b_s, b_a, b_r, b_s_, _ = self.memory.sample(BATCH_SIZE)
         b_s = torch.FloatTensor(b_s).to(device)
         b_a = torch.LongTensor(b_a.astype(int)).to(device)
@@ -170,5 +173,7 @@ class DRQN(object):
 
 
 class DRQN_KBC(Agent):
-    def __init__(self, ):
-        pass
+    def __init__(self, n_entities, n_predicates, switch_thres, state_size=128):
+        super(DRQN_KBC, self).__init__(n_entities, n_predicates, switch_thres)
+        action_size = n_entities * n_predicates
+        self.IS = DRQN(state_size, action_size)

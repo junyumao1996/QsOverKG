@@ -28,7 +28,7 @@ Run follows to download the raw datasets in src_data\.
 chmod +x download_data.sh
 ./download_data.sh
 ```
-Once the datasets are download, running for preprocessing;
+Once the datasets are download, running for preprocessing:
 ```
 python process_datasets.py
 ```

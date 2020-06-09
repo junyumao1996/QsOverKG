@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from .utils import EntropyIS
 
 class Agent(object):
     def __init__(self, n_entities, n_predicates, switch_thres=None):
@@ -85,7 +86,6 @@ class AgentRandom(Agent):
         super(AgentRandom, self).__init__(n_entities, n_predicates, switch_thres)
 
     def question(self):
-
         # fixed opportunities for modules
         if self.t < self.switch_thres:
             question = self.info_seeking()
@@ -98,10 +98,10 @@ class AgentRandom(Agent):
         return question
 
     def info_seeking(self):
-        pass
+        rel = np.random.randint(n_predicates)
+        obj = np.random.randint(n_entities)
+        return rel, obj
 
-    def know_acqusition(self):
-        pass
 
 
 class AgentEntropy(Agent):
@@ -125,7 +125,6 @@ class AgentEntropy(Agent):
         self.t += 1
 
     def info_seeking(self):
-        pass
+        return EntropyIS(self.kb_multinoulli)
 
-    def know_acqusition(self):
-        pass
+
