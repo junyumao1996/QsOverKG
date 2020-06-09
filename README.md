@@ -23,7 +23,7 @@ pip3 install -r requirements.txt
 <br>
 
 ### Datasets & Preprocessing
-Run follows to download the raw datasets in src_data\
+Run follows to download the raw datasets in src_data/ folder
 ```
 chmod +x download_data.sh
 ./download_data.sh
