@@ -1,0 +1,7 @@
+matplotlib
+numpy
+tqdm
+pytorch
+scikit-learn
+scikit-network
+scipy
