@@ -10,20 +10,20 @@ Python 3.6
 
 ### Prerequisites 
 
-##### 1. Clone the repository to local
+Clone the repository to local
 ```
 git clone https://github.com/junyumao1996/QsOverKG.git
 cd QsOverKG
 ```
 
-##### 2. Download requirements
+Installing the requirements
 ```
 pip3 install -r requirements.txt
 ```
 <br>
 
 ### Datasets & Preprocessing
-Run follows to download the raw datasets in src_data\.
+Run follows to download the raw datasets in src_data\
 ```
 chmod +x download_data.sh
 ./download_data.sh
