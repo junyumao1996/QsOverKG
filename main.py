@@ -14,12 +14,14 @@ N_GAMES = int(1e5)   # number of total games
 T = 20               # timesteps for a game
 
 # load and process the dataset
-name = 'FB237'
-name = 'NATIONS'
+names = ['FB15K', 'WN', 'WN18RR', 'FB237', 'YAGO3-10', 'UMLS', 'KINSHIP', 'NATIONS']
+name = name[7]
+print("Dataset: {}".format(name))
 dataset = dataset_to_tensor(os.path.join(DATA_PATH, name), 'train.pickle')
 dataset_t = dataset['tensor']
 print(dataset_t.shape)
 
+"""
 # define agent and simulator
 agent = DRQN_KBC()
 simulator = Simulator(dataset)
@@ -34,3 +36,5 @@ for i in range(N_GAMES):
 
 	guess = agent.guess_generate()
 	right, answer = guess_check(guess, verbose=False)
+
+"""

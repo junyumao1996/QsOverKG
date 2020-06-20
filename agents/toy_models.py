@@ -76,7 +76,6 @@ class Agent(object):
         return np.argmax(posterior)
 
         
-        
 
 class AgentRandom(Agent):
     """
