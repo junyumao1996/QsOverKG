@@ -1,29 +1,35 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import os 
 from pathlib import Path
-import json
-import pickle
+import matplotlib.pyplot as plt
 
-def dataset_to_tensor(data_path, file_name):
-    dataset = {}
 
-    entities_to_id = json.load(open("ent2id.json"))
-    relations_to_id = json.load(open("rel2id.json"))
-    n_ent = len(entities_to_id)
-    n_rel = len(relations_to_id)
-    del entities_to_id, relations_to_id
-    dataset['info'] = {}
-    dataset['info']['n_ent'] = n_ent
-    dataset['info']['n_rel'] = n_rel
-
-    probas = pickle.load(open(os.path.join(data_path, "probas.pickle"), 'rb'))
-    dataset['info']['probas'] = probas
-
-    dataset_tensor = np.zeros(shape=(n_ent, n_rel, n_ent), dtype=int)
-    examples = pickle.load(open(os.path.join(data_path, file_name), 'rb'))
-    for lhs, rel, rhs in examples:
-        dataset_tensor[lhs, rel, rhs] = 1
-    dataset['tensor'] = dataset_tensor
-
-    return dataset
+def winning_rate(results, alpha, path, n=20):
+    """
+    Compute moving average of the winning rate.
+    :param results: result sequence (list) of played games 
+    :param alpha: moving average factor
+    :param n: number of averaged consequent games
+    """
+    # average over n games
+    accu_results = []
+    for i, r in enumerate(results):
+        if i < n:
+            accu_results.append(np.sum(np.array(results[:i+1]))/(i+1))
+        else:
+            accu_results.append(np.sum(np.array(results[i-n:i]))/n)
+    # moving average
+    smoothed_results = []
+    for i, r in enumerate(accu_results):
+        if i == 0:
+            smoothed_results.append(r)
+        else:
+            smoothed = r * alpha + (1 - alpha) * smoothed_results[-1]
+            smoothed_results.append(smoothed)
+    # save win curve
+    fig = plt.figure()
+    plt.plot(smoothed_results)
+    plt.xlabel("Game Steps")
+    plt.ylabel("Winning Rate")
+    plt.savefig(os.path.join(path, 'win_curve.png'))
+    return smoothed_results 

@@ -3,7 +3,8 @@ This project partially contributes to the full outcome of Junyu Mao's master pro
 
 
 ### Dependencies
-Python 3.6
+Python 3.6 
+<br />
 [Pytorch](https://pytorch.org) >= 1.0.0
 
 <br>
@@ -23,7 +24,7 @@ pip3 install -r requirements.txt
 <br>
 
 ### Datasets & Preprocessing
-Run follows to download the raw datasets in src_data/ folder
+Run follows to download the raw datasets in ./src_data folder and run
 ```
 chmod +x download_data.sh
 ./download_data.sh

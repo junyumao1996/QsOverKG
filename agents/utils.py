@@ -1,6 +1,11 @@
 from collections import deque 
+import numpy as np
+import random
 
 class ReplayBuffer(object):
+    """
+    Replay buffer API. 
+    """
     def __init__(self, capacity):
         self.buffer = deque(maxlen=capacity)
     
@@ -20,6 +25,9 @@ class ReplayBuffer(object):
 
 
 class RecurrentReplayBuffer(object):
+    """
+    Replay buffer with recurrent episodic experience API. 
+    """
     def __init__(self, capacity, sequence_length=10):
         self.capacity = capacity
         self.memory = []
@@ -50,7 +58,7 @@ class RecurrentReplayBuffer(object):
                             
             samp+=final
 
-        #returns flattened version
+        # returns flattened version
         return samp, None, None
 
     def __len__(self):

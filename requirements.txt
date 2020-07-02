@@ -5,3 +5,4 @@ pytorch
 scikit-learn
 scikit-network
 scipy
+numba
