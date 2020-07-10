@@ -57,7 +57,7 @@ class Simulator():
 
 
     def guess_check(self, guess, verbose=False):
-        right = guess == self.target_entity 
+        right = guess == self.target_entity
         if verbose:
             comment = "Congratulations! You throw the right guess." if right else "Sorry! Maybe next time..."
             print(comment)

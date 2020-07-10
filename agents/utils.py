@@ -23,7 +23,6 @@ class ReplayBuffer(object):
         return len(self.buffer)
 
 
-
 class RecurrentReplayBuffer(object):
     """
     Replay buffer with recurrent episodic experience API. 

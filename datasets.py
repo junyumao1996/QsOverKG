@@ -68,7 +68,7 @@ def dataset_split(dataset, split_ratio=0.8):
     tensor_s = {}
     for key in dataset['tensor'].keys():
         if np.random.uniform(0, 1) < split_ratio:
-            tensor_s[key] = [10, 1, 1]    # (#yes, #no, #unknown) initialized with 1 each
+            tensor_s[key] = [10, 1, 1]    # (#yes, #no, #unknown) initialization of the known fact
     dataset_s['tensor'] = tensor_s
     return dataset_s
 
@@ -82,6 +82,7 @@ class InternalKB(object):
         self.data_info = dataset['info']
         self.n_entities = dataset['info']['n_ent']
         self.n_predicates = dataset['info']['n_rel']
+        self.entry_init = [10, 1, 1]
 
     def slice(self, shape: Tuple[List[int], List[int], List[int], List[int]]):
         """

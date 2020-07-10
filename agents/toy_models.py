@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from numba import jit
 import time
 from typing import Dict, Tuple, List, Union
@@ -21,7 +23,7 @@ class Agent(ABC):
         self.ent_log = np.zeros(self.n_entities)
         self.switch_thres = switch_thres
 
-        self.KA_model = CP((self.n_entities, self.n_predicates,  self.n_entities), rank=1000)
+        self.KA = CP((self.n_entities, self.n_predicates,  self.n_entities), rank=1000)
         
         self.reset()
 
@@ -47,6 +49,8 @@ class Agent(ABC):
         Reset agent state and episode (when new episode starts). 
         """
         self.t = 0
+        self.module = "IS" 
+        self.module_switch = False
         self.episode_log = {'question':list(), 'response':list()}
 
     def know_acqusition(self):
@@ -55,6 +59,20 @@ class Agent(ABC):
         :return : a list of [relation, object]
         """
         pass
+
+    def KB_update(self, q_seq: List[Tuple[int, int, int]], r_seq: List[int]):
+        """
+        Update the internal KB from questions and responses log.
+        :param q_seq: question sequence as [(lhs, rhs, rhs)]
+        :param r_seq: response sequence as [response]
+        """
+        assert len(q_seq) == len(r_seq)
+        for q, r in zip(q_seq, r_seq):
+            if q in self.kb.data.keys():
+                self.kb.data[q][r] += 1
+            else:
+                self.kb.data[q] = self.kb.entry_init
+                self.kb.data[q][r] += 1
 
     def update_response(self, response):
         """
@@ -72,7 +90,7 @@ class Agent(ABC):
         if feedback:
             self.ent_log[self.guess] += 1
 
-    def guess_generate(self, method='log'):
+    def guess_generate(self, method='log', normalize=False):
         """
         Generate the final guess given the reponses.
         """
@@ -103,33 +121,39 @@ class Agent(ABC):
 
         # bayes' rule
         posterior = prior_log + lik_log
-        self.guess = np.argmax(posterior)
+        posterior += np.min(posterior)
+        max_post = np.max(posterior)
+        self.guess = np.random.choice(np.where(posterior == max_post)[0])
         # print(posterior)
 
         # t2 = time.time()
         # print("t2-t1", t2-t1)
 
-        return self.guess
+        if normalize:
+            prob = np.exp(max_post)/np.sum(np.exp(posterior))
+        else:
+            prob = None
+        return self.guess, prob
 
-    def guess_generate2(self, method='log'):
+    def guess_generate_torch(self, method='log'):
         """
         Generate the final guess given the reponses (torch tensor based).
         """
         # compute independent likelihood
         q_log = np.array(self.episode_log['question'])
         a_log = np.array(self.episode_log['response'])
-        prob = torch.ones((self.n_entities, self.t), requires_grad=False).cuda()
-        for t in range(self.t): 
-            prob[:, t] = torch.tensor(self.kb.slice((range(self.n_entities), [q_log[t, 0]], [q_log[t, 1]], [a_log[t]])).ravel(), requires_grad=False).cuda()
-        prob_log = torch.log(prob)          # size (n_ent, t)
+        prob = torch.ones((self.n_entities, self.t), requires_grad=False).to(device)
+        for t in range(self.t):
+            prob[:, t] = torch.tensor(self.kb.slice((range(self.n_entities), [q_log[t, 0]], [q_log[t, 1]], [a_log[t]])).ravel(), requires_grad=False).to(device)
+        prob_log = torch.log(prob)             # size (n_ent, t)
         lik_log = torch.sum(prob_log, dim=1)
 
         # compute prior
         if method == 'log':
-            prior = torch.tensor(self.ent_log, requires_grad=False).cuda() + 1    # laplace smoothing
+            prior = torch.tensor(self.ent_log, requires_grad=False).to(device) + 1    # laplace smoothing
             prior = prior / torch.sum(prior)
         elif method == 'uniform':
-            prior = torch.ones(self.n_entities, requires_grad=False).cuda() / self.n_entities
+            prior = torch.ones(self.n_entities, requires_grad=False).to(device) / self.n_entities
         else:
             raise Exception
         prior_log  = torch.log(prior)
@@ -152,23 +176,21 @@ class AgentRandom(Agent):
         # fixed opportunities for modules
         if self.t < self.switch_thres:
             q = self.info_seeking()
-            module = 0
+            self.module = "IS" 
         else:
             q = self.know_acqusition()
-            module = 1
+            self.module = "KA"
 
-        if self.t == self.T - 2:
-            done = True
-        else:
-            done = False
+        self.module_switch = True if self.t == self.switch_thres - 2 else False
+        done = True if self.t == self.T - 2 else False
 
         self.episode_log['question'].append(q)
-        return q, module, done
+        return q, self.module_switch, done
 
     def info_seeking(self):
         rel = np.random.randint(self.n_predicates)
-        obj = np.random.randint(self.n_entities)
-        return [rel, obj]
+        rhs = np.random.randint(self.n_entities)
+        return [rel, rhs]
 
 
 
@@ -183,18 +205,16 @@ class AgentEntropy(Agent):
         # fixed opportunities for modules
         if self.t < self.switch_thres:
             q = self.info_seeking()
-            module = 0
+            self.module = "IS" 
         else:
             q = self.know_acqusition()
-            module = 1
+            self.module = "KA"
 
-        if self.t >= self.T - 2:
-            done = True
-        else:
-            done = False
+        self.module_switch = True if self.t == self.switch_thres-1 else False
+        done = True if self.t == self.T - 2 else False
 
         self.episode_log['question'].append(q)
-        return q, module, done 
+        return q, self.module_switch, done
 
     def info_seeking(self):
         pass

@@ -4,7 +4,21 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 
-def winning_rate(results, alpha, path, n=20):
+def winning_rate_appro(results, n=1000):
+    """
+    Compute moving average of the winning rate.
+    :param n: number of averaged consequent games
+    """
+    # average over n games
+    accu_results = []
+    for i, r in enumerate(results):
+        if i < n:
+            accu_results.append(np.sum(np.array(results[:i+1]))/(i+1))
+        else:
+            accu_results.append(np.sum(np.array(results[i-n:i]))/n)
+    return smoothed_results 
+
+def winning_rate_smoothed(results, alpha, path, n=20):
     """
     Compute moving average of the winning rate.
     :param results: result sequence (list) of played games 
