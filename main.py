@@ -3,6 +3,7 @@ import time
 import pickle
 from pathlib import Path
 import matplotlib.pyplot as plt
+import gc
 
 from datasets import *
 from simulator import Simulator
@@ -20,26 +21,39 @@ DATA_PATH = Path.cwd() / 'data'
 print('DATA_PATH: {}'.format(DATA_PATH))
 
 # load and process the dataset
-names = ['FB15K', 'WN', 'WN18RR', 'FB237', 'YAGO3-10', 'UMLS', 'KINSHIP', 'NATIONS']
-name = names[7]
+dataset_collection = ['FB15K', 'WN', 'WN18RR', 'FB237', 'YAGO3-10', 'UMLS', 'KINSHIP', 'NATIONS']
+name = dataset_collection[7]
 dataset = dataset_to_dict(os.path.join(DATA_PATH, name), 'train.pickle')
 dataset_agent = dataset_split(dataset)
 dataset = ExternalKB(dataset)
 dataset_agent = InternalKB(dataset_agent)
 print("Dataset: {} with {} Entities and {} Predicates. ".format(name, dataset.n_entities, dataset.n_predicates))
 
+# select agent
+agent_collection = ["Random", "DQN", "DRQN"]
+agent_name = agent_collection[2]
+
 # set up log path 
-exp_name = '{}_{}'.format(name, time.strftime("%d-%m-%Y_%H-%M-%S"))
+exp_name = '{}_{}_{}'.format(name, agent_name, time.strftime("%d-%m-%Y_%H-%M-%S"))
 exp_dir = Path.cwd() / 'log' / exp_name
 assert not os.path.exists(exp_dir), \
     'Experiment directory {0} already exists. Either delete the directory, or run the experiment with a different name'.format(
         exp_dir)
 os.makedirs(exp_dir, exist_ok=True)
 
+# set up pre-train load path
+load_path = Path.cwd() / 'log' /'NATIONS_DRQN_13-07-2020_21-51-46'
+
 # instantiate agent
-# agent = AgentRandom(dataset_agent, SWITCH_THRES, T)
-# agent = AgentDQN(dataset_agent, SWITCH_THRES, T)
-agent = AgentDRQN(dataset_agent, SWITCH_THRES, T)
+if agent_name == "Random":
+	agent = AgentRandom(dataset_agent, SWITCH_THRES, T, load_path=load_path)
+elif agent_name == "DQN":
+	agent = AgentDQN(dataset_agent, SWITCH_THRES, T, load_path=load_path)
+elif agent_name == "DRQN":
+	agent = AgentDRQN(dataset_agent, SWITCH_THRES, T, load_path=load_path)
+else:
+	raise RuntimeError('No match agent is found!')
+
 # instantiate simulator
 simulator = Simulator(dataset)
 
@@ -66,6 +80,7 @@ for i in range(N_GAMES):
 	# exit()
 	# save logs
 	if (i+1) % N_AVERAGE == 0:
+		# record winning rate
 		success_rate = np.average(np.array(win_log))
 		print("Game {}/{} - Success rate: {}".format(i + 1, N_GAMES, success_rate))
 		win_curve.append(success_rate)
@@ -79,5 +94,8 @@ for i in range(N_GAMES):
 		with open(os.path.join(exp_dir, 'raw.txt'), "a") as myfile:
 			myfile.write(string)
 		win_log = []
+		# save model
+		agent.save_model(exp_dir)
+		gc.collect()
 
 

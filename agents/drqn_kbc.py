@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import torch.autograd as autograd
 import numpy as np
 import copy
+import os
 from .toy_models import Agent
 from .utils import ReplayBuffer, RecurrentReplayBuffer
 from datasets import InternalKB
@@ -49,7 +50,7 @@ class QNetwork(nn.Module):
         return self.fc3(x)
 
 class DQN(object):
-    def __init__(self, state_size, action_size, lr, batch_size=64, epsilon=0.9):
+    def __init__(self, state_size, action_size, lr, batch_size=64, epsilon=0.9, load_path=None):
         self.n_actions = action_size
         self.batch_size = batch_size
         self.epsilon = epsilon
@@ -63,6 +64,9 @@ class DQN(object):
         self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=lr)
         self.loss_func = nn.MSELoss()
 
+        if load_path != None:
+            self.load_model(load_path)
+            
     def choose_action(self, x):
         """
         :param: x: of shape (4*n_actions, )
@@ -111,16 +115,32 @@ class DQN(object):
         loss.backward()
         self.optimizer.step()
 
+    def load_model(self, load_path):
+        self.eval_net.load_state_dict(torch.load(os.path.join(load_path, 'eval_net.pkl')))
+        self.target_net.load_state_dict(torch.load(os.path.join(load_path, 'target_net.pkl')))
+        self.optimizer.load_state_dict(torch.load(os.path.join(load_path,'optimizer.pkl')))
+
+    def save_model(self, exp_path):
+        torch.save(self.eval_net.state_dict(), os.path.join(exp_path, 'eval_net.pkl'))
+        torch.save(self.target_net.state_dict(), os.path.join(exp_path, 'target_net.pkl'))
+        torch.save(self.optimizer.state_dict(), os.path.join(exp_path, 'optimizer.pkl'))
 
 class AgentDQN(Agent):
     """
     DQN agent with designed state. 
     """
-    def __init__(self, dataset: InternalKB, switch_thres, n_chances=20, lr=5e-4):
+    def __init__(self, dataset: InternalKB, switch_thres, n_chances=20, lr=5e-4, load_path=None):
         super(AgentDQN, self).__init__(dataset, n_chances, switch_thres)
         self.n_actions = self.n_predicates * self.n_entities
         self.IS = DQN(np.prod(self.state_size), self.n_actions, lr)
         self.episode_state = np.zeros((self.n_actions, 4))  # representation of current question&response history (i.e., state)
+
+        if load_path != None:
+            # load pre-trained model
+            self.IS.load_model(load_path)
+
+    def save_model(self, exp_path):
+        self.IS.save_model(exp_path)
 
     def reset(self):
         """
@@ -249,7 +269,6 @@ class RecurrentQNetwork(nn.Module):
         """
         :param action_size: number of actions
         """
-
         super(RecurrentQNetwork, self).__init__()
         self.o_size = observation_size
         self.hidden_size = state_hidden
@@ -281,7 +300,7 @@ class RecurrentQNetwork(nn.Module):
         return q_values
 
 class DRQN(object):
-    def __init__(self, n_predicates, n_entities, n_responses, action_size, sequence_len, lr, state_size=256, batch_size=8, epsilon=0.9):
+    def __init__(self, n_predicates, n_entities, n_responses, action_size, sequence_len, lr, state_size=256, batch_size=8, epsilon=0.9, load_path=None):
         self.n_actions = action_size
         self.state_size = state_size
         self.sequence_len = sequence_len
@@ -299,6 +318,9 @@ class DRQN(object):
         params = list(self.o_embed.parameters()) + list(self.eval_net.parameters())
         self.optimizer = torch.optim.Adam(params, lr=lr)
         self.loss_func = nn.MSELoss()
+
+        if load_path != None:
+            self.load_model(load_path)
 
     def update_hidden(self, x, hx):
         """
@@ -372,18 +394,36 @@ class DRQN(object):
         loss.backward()
         self.optimizer.step()
 
+    def load_model(self, load_path):
+        self.o_embed.load_state_dict(torch.load(os.path.join(load_path, 'o_embed.pkl')))
+        self.eval_net.load_state_dict(torch.load(os.path.join(load_path, 'eval_net.pkl')))
+        self.target_net.load_state_dict(torch.load(os.path.join(load_path, 'target_net.pkl')))
+        self.optimizer.load_state_dict(torch.load(os.path.join(load_path,'optimizer.pkl')))
+
+    def save_model(self, exp_path):
+        torch.save(self.o_embed.state_dict(), os.path.join(exp_path, 'o_embed.pkl'))
+        torch.save(self.eval_net.state_dict(), os.path.join(exp_path, 'eval_net.pkl'))
+        torch.save(self.target_net.state_dict(), os.path.join(exp_path, 'target_net.pkl'))
+        torch.save(self.optimizer.state_dict(), os.path.join(exp_path, 'optimizer.pkl'))
 
 class AgentDRQN(Agent):
     """
     Deep recurrent Q-learning agent.
     """
-    def __init__(self, dataset: InternalKB, switch_thres, n_chances=20, lr=5e-4):
+    def __init__(self, dataset: InternalKB, switch_thres, n_chances=20, lr=5e-4, load_path=None):
         self.n_responses = 3 
         super(AgentDRQN, self).__init__(dataset, n_chances, switch_thres)
         self.n_actions = self.n_predicates * self.n_entities        
         self.IS = DRQN(self.n_predicates + 1, self.n_entities + 1, self.n_responses + 1, self.n_actions, switch_thres, lr)  # (+ 1 extra null response at t=0)
         self.hidden = torch.zeros((1, 1, self.IS.eval_net.hidden_size)).to(device)
         self.q_values = torch.squeeze(self.IS.eval_net.forward_no_observation(self.hidden), 1)
+
+        if load_path != None:
+            # load pre-trained model
+            self.IS.load_model(load_path)
+
+    def save_model(self, exp_path):
+        self.IS.save_model(exp_path)
 
     def reset(self):
         """

@@ -44,6 +44,9 @@ class Agent(ABC):
         """
         pass
 
+    def save_model(self, exp_path):
+        pass
+
     def reset(self):
         """
         Reset agent state and episode (when new episode starts). 
@@ -169,8 +172,11 @@ class AgentRandom(Agent):
     """
     Random question picking (fixed opportunities)
     """
-    def __init__(self, dataset: InternalKB, switch_thres, n_chances=20):
+    def __init__(self, dataset: InternalKB, switch_thres, n_chances=20, load_path=None):
         super(AgentRandom, self).__init__(dataset, n_chances, switch_thres)
+
+        if load_path != None:
+            pass
 
     def question(self):
         # fixed opportunities for modules
