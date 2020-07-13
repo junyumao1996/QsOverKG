@@ -17,10 +17,13 @@ from datasets import InternalKB
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 BUFFER_SIZE = int(1e5)  # replay buffer size
-EPSILON = 0.9           # action selection
 GAMMA = 0.99            # discount factor
 TAU = 1e-3              # for soft update of target parameters
 FREEZE_INTERVAL = int(1e4) # how often to update the network
+
+# set random seed manually
+torch.manual_seed(123)
+torch.cuda.manual_seed(123)
 
 class QNetwork(nn.Module):
     """Critic Q Network."""
@@ -46,12 +49,10 @@ class QNetwork(nn.Module):
         return self.fc3(x)
 
 class DQN(object):
-    def __init__(self, state_size, action_size, lr, batch_size=64):
-        # set random seed manually
-        torch.manual_seed(123)
-        torch.cuda.manual_seed(123)
+    def __init__(self, state_size, action_size, lr, batch_size=64, epsilon=0.9):
         self.n_actions = action_size
         self.batch_size = batch_size
+        self.epsilon = epsilon
         self.freeze_interval = int(1e4)
 
         self.target_net = QNetwork(state_size, action_size).to(device)
@@ -68,7 +69,7 @@ class DQN(object):
         """
         x = torch.unsqueeze(torch.FloatTensor(x), 0)          # add batch size as 1
         # epsilon-greedy policy
-        if np.random.uniform() < EPSILON:   # greedy
+        if np.random.uniform() < self.epsilon:   # greedy
             actions_value = self.eval_net.forward(x)
             action = torch.max(actions_value, 1)[1].data.numpy()
             action = action[0] 
@@ -100,8 +101,8 @@ class DQN(object):
 
 
         # q_eval w.r.t the action in experience
-        q_eval = self.eval_net(b_s).gather(1, b_a)                      # shape (batch, 1)
-        q_next = self.target_net(b_s_).detach()                         # detach from graph, don't backpropagate
+        q_eval = self.eval_net(b_s).gather(1, b_a)                           # shape (batch, 1)
+        q_next = self.target_net(b_s_).detach()                              # detach from graph, don't backpropagate
         q_target = b_r + GAMMA * q_next.max(1)[0].view(self.batch_size, 1)   # shape (batch, 1)
         # compute the loss 
         loss = self.loss_func(q_eval, q_target)
@@ -280,14 +281,12 @@ class RecurrentQNetwork(nn.Module):
         return q_values
 
 class DRQN(object):
-    def __init__(self, n_predicates, n_entities, n_responses, action_size, sequence_len, lr, state_size=256, batch_size=8):
-        # set random seed manually
-        torch.manual_seed(123)
-        torch.cuda.manual_seed(123)
+    def __init__(self, n_predicates, n_entities, n_responses, action_size, sequence_len, lr, state_size=256, batch_size=8, epsilon=0.9):
         self.n_actions = action_size
         self.state_size = state_size
         self.sequence_len = sequence_len
         self.batch_size = batch_size
+        self.epsilon = epsilon
         self.freeze_interval = int(1e3)
 
         self.o_embed = Observation_Embedding(n_predicates, n_entities, n_responses).to(device)
@@ -314,13 +313,16 @@ class DRQN(object):
             actions_value = torch.squeeze(actions_value, 1)
         return actions_value, hidden
 
+    def epsilon_scheduling(self):
+        self.epsilon *= 0.9
+
     def choose_action(self, actions_value):
         """
         Choose action based on current observation.
         :param actions_value: computed action values in this state
         """   
         # epsilon-greedy policy
-        if np.random.uniform() < EPSILON:   # greedy
+        if np.random.uniform() < self.epsilon:   # greedy
             with torch.no_grad():
                 action = torch.max(actions_value, 1)[1].data.numpy()
                 action = action[0]
