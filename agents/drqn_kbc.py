@@ -174,7 +174,7 @@ class AgentDQN(Agent):
             self.episode_log['question'].append(q)
             # RL agent learning 
             #if len(self.IS.memory) == BUFFER_SIZE:
-            if len(self.IS.memory) > 4* BATCH_SIZE:
+            if len(self.IS.memory) > 4* self.IS.batch_size:
                 self.IS.learn()
         return q, self.module_switch, done
     
@@ -450,7 +450,7 @@ class AgentDRQN(Agent):
             self.episode_log['question_flat'].append([q_flat])
             # RL agent learning 
             # if len(self.IS.memory) == BUFFER_SIZE:
-            if len(self.IS.memory) > 4*BATCH_SIZE:
+            if len(self.IS.memory) > 4*self.IS.batch_size:
                 self.IS.learn()
         return q, self.module_switch, done
     
