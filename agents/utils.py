@@ -25,6 +25,31 @@ class ReplayBuffer(object):
 
 class RecurrentReplayBuffer(object):
     """
+    Replay buffer with recurrent episodic experience API.
+    """
+    def __init__(self, capacity):
+        self.buffer = deque(maxlen=capacity)
+    
+    def store_transition(self, observations, actions, rewards, next_observations, dones):
+        """
+        :param observations: np.array of [rel, rhs, response] of shape (seq_len, 3)
+        :param actions:  np.array of flattened (rel, rhs) of shape (seq_len, 1)
+        :param rewards:  np.array of [rewards] of shape (seq_len, 1)
+        """
+        observation      = np.expand_dims(observations, 0)
+        next_observation = np.expand_dims(next_observations, 0)
+            
+        self.buffer.append((observation, actions, rewards, next_observation, dones))
+    
+    def sample(self, batch_size):
+        observation, action, reward, next_observation, done = zip(*random.sample(self.buffer, batch_size))
+        return np.concatenate(observation), action, reward, np.concatenate(next_observation), done
+    
+    def __len__(self):
+        return len(self.buffer)
+
+class RecurrentReplayBuffer2(object):
+    """
     Replay buffer with recurrent episodic experience API. 
     """
     def __init__(self, capacity, sequence_length=10):

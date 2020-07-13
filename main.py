@@ -7,13 +7,13 @@ import matplotlib.pyplot as plt
 from datasets import *
 from simulator import Simulator
 from agents.toy_models import *
-from agents.drqn_kbc import AgentDQN
+from agents.drqn_kbc import AgentDQN, AgentDRQN
 
 
-N_GAMES = int(1e3)      # number of total games
-T = 10                  # timesteps for a game
-SWITCH_THRES = 10       # switch threshold for IS and KA
-N_AVERAGE = 1000        # number of average games
+N_GAMES = int(1e4)      # number of total games
+T = 20                  # timesteps for a game
+SWITCH_THRES = 20       # switch threshold for IS and KA
+N_AVERAGE = 100        # number of average games
 
 # set up data path
 DATA_PATH = Path.cwd() / 'data'
@@ -38,7 +38,8 @@ os.makedirs(exp_dir, exist_ok=True)
 
 # instantiate agent
 # agent = AgentRandom(dataset_agent, SWITCH_THRES, T)
-agent = AgentDQN(dataset_agent, SWITCH_THRES, T)
+# agent = AgentDQN(dataset_agent, SWITCH_THRES, T)
+agent = AgentDRQN(dataset_agent, SWITCH_THRES, T)
 # instantiate simulator
 simulator = Simulator(dataset)
 
@@ -49,22 +50,24 @@ for i in range(N_GAMES):
 	simulator.entity_select()
 	agent.reset()
 	while 1:
-		q, switch, done = agent.question()
-		r = simulator.response(q)
-		agent.update_response(r)
+		question, switch, done = agent.question()
+		if done:
+			break
+		response = simulator.response(question)
+		agent.update_response(response)
+		# print(q, switch)
 
 		if switch:
 			guess, prob = agent.guess_generate(normalize=True)
 			right, answer = simulator.guess_check(guess, verbose=False)
 			agent.get_feedback(right)
-		if done:
-			break
 	win_log.append(int(right))
 	# print("Game {} - Guess/Target: {:>11} Confidence: {:4f} Victory: {}".format(i, str(guess) + '/' + str(answer), prob, right))
+	# exit()
 	# save logs
 	if (i+1) % N_AVERAGE == 0:
 		success_rate = np.average(np.array(win_log))
-		print("episode {}/{} - Success rate: {}".format(i + 1, N_GAMES, success_rate))
+		print("Game {}/{} - Success rate: {}".format(i + 1, N_GAMES, success_rate))
 		win_curve.append(success_rate)
 		fig = plt.figure()
 		plt.plot(N_GAMES*np.arange(len(win_curve)), win_curve)
