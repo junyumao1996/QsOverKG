@@ -6,3 +6,4 @@ scikit-learn
 scikit-network
 scipy
 numba
+setproctitle
