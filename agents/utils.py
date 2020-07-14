@@ -1,89 +1,79 @@
-from collections import deque 
+"""
+[reference] to https://github.com/ChangyWen/wolpertinger_ddpg
+"""
+
+import os
+import torch
 import numpy as np
-import random
+from torch.autograd import Variable
+import logging
 
-class ReplayBuffer(object):
+
+def to_numpy(var, gpu_used=False):
+    return var.cpu().data.numpy().astype(np.float64) if gpu_used else var.data.numpy().astype(np.float64)
+
+def to_tensor(ndarray, volatile=False, requires_grad=False, gpu_used=False, gpu_0 = 0):
+    if gpu_used:
+        return Variable(torch.from_numpy(ndarray).cuda(device=gpu_0).type(torch.cuda.DoubleTensor),
+                        volatile=volatile,
+                        requires_grad=requires_grad)
+    else:
+        return Variable(torch.from_numpy(ndarray).type(torch.DoubleTensor),
+                        volatile=volatile,
+                        requires_grad=requires_grad)
+
+def soft_update(target, source, tau_update):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(
+            target_param.data * (1.0 - tau_update) + param.data * tau_update
+        )
+
+def hard_update(target, source):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+            target_param.data.copy_(param.data)
+
+def get_output_folder(parent_dir, env_name):
+    """Return save folder.
+    Assumes folders in the parent_dir have suffix -run{run
+    number}. Finds the highest run number and sets the output folder
+    to that number + 1. This is just convenient so that if you run the
+    same script multiple times tensorboard can plot all of the results
+    on the same plots with different names.
+    Parameters
+    ----------
+    parent_dir: str
+      Path of the directory containing all experiment runs.
+    Returns
+    -------
+    parent_dir/run_dir
+      Path to this run's save directory.
     """
-    Replay buffer API. 
-    """
-    def __init__(self, capacity):
-        self.buffer = deque(maxlen=capacity)
-    
-    def store_transition(self, state, action, reward, next_state, done):
-        state      = np.expand_dims(state, 0)
-        next_state = np.expand_dims(next_state, 0)
-            
-        self.buffer.append((state, action, reward, next_state, done))
-    
-    def sample(self, batch_size):
-        state, action, reward, next_state, done = zip(*random.sample(self.buffer, batch_size))
-        return np.concatenate(state), action, reward, np.concatenate(next_state), done
-    
-    def __len__(self):
-        return len(self.buffer)
+    os.makedirs(parent_dir, exist_ok=True)
+    experiment_id = 0
+    for folder_name in os.listdir(parent_dir):
+        if not os.path.isdir(os.path.join(parent_dir, folder_name)):
+            continue
+        try:
+            folder_name = int(folder_name.split('-run')[-1])
+            if folder_name > experiment_id:
+                experiment_id = folder_name
+        except:
+            pass
+    experiment_id += 1
 
+    parent_dir = os.path.join(parent_dir, env_name)
+    parent_dir = parent_dir + '-run{}'.format(experiment_id)
+    os.makedirs(parent_dir, exist_ok=True)
+    return parent_dir
 
-class RecurrentReplayBuffer(object):
-    """
-    Replay buffer with recurrent episodic experience API.
-    """
-    def __init__(self, capacity):
-        self.buffer = deque(maxlen=capacity)
-    
-    def store_transition(self, observations, actions, rewards, next_observations, dones):
-        """
-        :param observations: np.array of [rel, rhs, response] of shape (seq_len, 3)
-        :param actions:  np.array of flattened (rel, rhs) of shape (seq_len, 1)
-        :param rewards:  np.array of [rewards] of shape (seq_len, 1)
-        """
-        observation      = np.expand_dims(observations, 0)
-        next_observation = np.expand_dims(next_observations, 0)
-            
-        self.buffer.append((observation, actions, rewards, next_observation, dones))
-    
-    def sample(self, batch_size):
-        observation, action, reward, next_observation, done = zip(*random.sample(self.buffer, batch_size))
-        return np.concatenate(observation), action, reward, np.concatenate(next_observation), done
-    
-    def __len__(self):
-        return len(self.buffer)
+def setup_logger(logger_name, log_file, level=logging.INFO):
+    l = logging.getLogger(logger_name)
+    formatter = logging.Formatter('%(asctime)s : %(message)s')
+    fileHandler = logging.FileHandler(log_file, mode='w')
+    fileHandler.setFormatter(formatter)
+    streamHandler = logging.StreamHandler()
+    streamHandler.setFormatter(formatter)
 
-class RecurrentReplayBuffer2(object):
-    """
-    Replay buffer with recurrent episodic experience API. 
-    """
-    def __init__(self, capacity, sequence_length=10):
-        self.capacity = capacity
-        self.memory = []
-        self.seq_length=sequence_length
-
-    def push(self, transition):
-        self.memory.append(transition)
-        if len(self.memory) > self.capacity:
-            del self.memory[0]
-
-    def sample(self, batch_size):
-        finish = random.sample(range(0, len(self.memory)), batch_size)
-        begin = [x-self.seq_length for x in finish]
-        samp = []
-        for start, end in zip(begin, finish):
-            # correct for sampling near beginning
-            final = self.memory[max(start+1,0):end+1]
-            
-            # correct for sampling across episodes
-            for i in range(len(final)-2, -1, -1):
-                if final[i][3] is None:
-                    final = final[i+1:]
-                    break
-                    
-            # pad beginning to account for corrections
-            while(len(final)<self.seq_length):
-                final = [(np.zeros_like(self.memory[0][0]), 0, 0, np.zeros_like(self.memory[0][3]))] + final
-                            
-            samp+=final
-
-        # returns flattened version
-        return samp, None, None
-
-    def __len__(self):
-        return len(self.memory)
+    l.setLevel(level)
+    l.addHandler(fileHandler)
+    l.addHandler(streamHandler)

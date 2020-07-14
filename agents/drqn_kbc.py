@@ -10,7 +10,7 @@ import numpy as np
 import copy
 import os
 from .toy_models import Agent
-from .utils import ReplayBuffer, RecurrentReplayBuffer
+from .memory import ReplayBuffer, RecurrentReplayBuffer
 from datasets import InternalKB
 
 

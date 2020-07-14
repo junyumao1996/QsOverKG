@@ -16,7 +16,7 @@ def winning_rate_appro(results, n=1000):
             accu_results.append(np.sum(np.array(results[:i+1]))/(i+1))
         else:
             accu_results.append(np.sum(np.array(results[i-n:i]))/n)
-    return smoothed_results 
+    return accu_results 
 
 def winning_rate_smoothed(results, alpha, path, n=20):
     """
