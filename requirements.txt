@@ -7,3 +7,4 @@ scikit-network
 scipy
 numba
 setproctitle
+pyflann-py3

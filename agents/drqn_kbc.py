@@ -58,6 +58,8 @@ class DQN(object):
 
         self.target_net = QNetwork(state_size, action_size).to(device)
         self.eval_net = QNetwork(state_size, action_size).to(device)
+        # copy eval net to target
+        self.target_net.load_state_dict(self.eval_net.state_dict())
 
         self.learn_step_counter = 0                                     # for target updating
         self.memory = ReplayBuffer(BUFFER_SIZE)                         # initialize memory
@@ -312,6 +314,9 @@ class DRQN(object):
 
         self.target_net = RecurrentQNetwork(self.o_embed.observation_size, action_size, self.state_size).to(device)
         self.eval_net = RecurrentQNetwork(self.o_embed.observation_size, action_size, self.state_size).to(device)
+
+        # copy eval net to target
+        self.target_net.load_state_dict(self.eval_net.state_dict())
 
         self.learn_step_counter = 0                                              # for target updating
         self.memory = RecurrentReplayBuffer(BUFFER_SIZE)                         # initialize memory

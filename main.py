@@ -89,6 +89,7 @@ for i in range(N_GAMES):
 		plt.xlabel("Game Steps")
 		plt.ylabel("Winning Rate")
 		plt.savefig(os.path.join(exp_dir, 'win_curve.png'))
+		plt.cla()
 		win_log_l = [str(i) for i in win_log]
 		string = ' '.join(win_log_l)
 		with open(os.path.join(exp_dir, 'raw.txt'), "a") as myfile:
