@@ -132,14 +132,13 @@ class DDPG(object):
             print(max(self.epsilon, 0.2) * self.random_process.sample() * self.a_range / 2)
         exit()
 
-    def select_action(self, s_t, decay_epsilon=False):
+    def select_action(self, s_t, decay_epsilon=True):
         # proto action
         action = to_numpy(
             self.actor(to_tensor(np.array([s_t]), gpu_used=self.gpu_used, gpu_0=self.gpu_ids[0])),
             gpu_used=self.gpu_used
         ).squeeze(0)
         action += self.is_training * max(self.epsilon, 0.1) * self.random_process.sample() * self.a_range / 2
-        # action = np.clip(action, -1., 1.)                  # notice the range here
         action = np.clip(action, self.a_low, self.a_high)    # notice the range here
 
         if decay_epsilon:
@@ -169,7 +168,6 @@ class DDPG(object):
             torch.load('{}/critic.pkl'.format(dir), map_location=ml)
         )
         print('model weights loaded')
-
 
     def save_model(self, output):
         if len(self.gpu_ids) == 1 and self.gpu_ids[0] > 0:
