@@ -8,3 +8,4 @@ scipy
 numba
 setproctitle
 pyflann-py3
+wandb

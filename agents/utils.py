@@ -8,120 +8,125 @@ import torch
 import numpy as np
 from torch.autograd import Variable
 import logging
+import math
+from scipy.stats import entropy
 
+def action2index(n_predicates, n_entities, rel: int, rhs: int):
+    assert rel < n_predicates 
+    assert rhs < n_entities
+    return rel * n_entities + rhs
 
-def to_numpy(var, gpu_used=False):
-    return var.cpu().data.numpy().astype(np.float64) if gpu_used else var.data.numpy().astype(np.float64)
+def index2action(n_predicates, n_entities, idx: int):
+    assert idx < n_predicates * n_entities
+    return idx // n_entities, idx % n_entities
 
-def to_tensor(ndarray, volatile=False, requires_grad=False, gpu_used=False, gpu_0 = 0):
-    if gpu_used:
-        return Variable(torch.from_numpy(ndarray).cuda(device=gpu_0).type(torch.cuda.DoubleTensor),
-                        volatile=volatile,
-                        requires_grad=requires_grad)
-    else:
-        return Variable(torch.from_numpy(ndarray).type(torch.DoubleTensor),
-                        volatile=volatile,
-                        requires_grad=requires_grad)
+# def reward_func(right=None, done=False, pos=0):
+#     """
+#     Reward function for the RL agent.
+#     right: whether the final guess is right
+#     done: whether it is the termination of IS module
+#     """
+#     if done==True:
+#         if right==True:
+#             r = 1.0
+#         else:
+#             r = -1.0
+#     else:
+#         r = 0.0
+#     return r
 
-def soft_update(target, source, tau_update):
-    for target_param, param in zip(target.parameters(), source.parameters()):
-        target_param.data.copy_(
-            target_param.data * (1.0 - tau_update) + param.data * tau_update
-        )
-
-def hard_update(target, source):
-    for target_param, param in zip(target.parameters(), source.parameters()):
-            target_param.data.copy_(param.data)
-
-def get_output_folder(parent_dir, env_name):
-    """Return save folder.
-    Assumes folders in the parent_dir have suffix -run{run
-    number}. Finds the highest run number and sets the output folder
-    to that number + 1. This is just convenient so that if you run the
-    same script multiple times tensorboard can plot all of the results
-    on the same plots with different names.
-    Parameters
-    ----------
-    parent_dir: str
-      Path of the directory containing all experiment runs.
-    Returns
-    -------
-    parent_dir/run_dir
-      Path to this run's save directory.
+def reward_func(right=None, done=False, pos=0):
     """
-    os.makedirs(parent_dir, exist_ok=True)
-    experiment_id = 0
-    for folder_name in os.listdir(parent_dir):
-        if not os.path.isdir(os.path.join(parent_dir, folder_name)):
-            continue
-        try:
-            folder_name = int(folder_name.split('-run')[-1])
-            if folder_name > experiment_id:
-                experiment_id = folder_name
-        except:
-            pass
-    experiment_id += 1
-
-    parent_dir = os.path.join(parent_dir, env_name)
-    parent_dir = parent_dir + '-run{}'.format(experiment_id)
-    os.makedirs(parent_dir, exist_ok=True)
-    return parent_dir
-
-def setup_logger(logger_name, log_file, level=logging.INFO):
-    l = logging.getLogger(logger_name)
-    formatter = logging.Formatter('%(asctime)s : %(message)s')
-    fileHandler = logging.FileHandler(log_file, mode='w')
-    fileHandler.setFormatter(formatter)
-    streamHandler = logging.StreamHandler()
-    streamHandler.setFormatter(formatter)
-
-    l.setLevel(level)
-    l.addHandler(fileHandler)
-    l.addHandler(streamHandler)
-
-
-# exploration noises 
-class RandomProcess(object):
-    def reset_states(self):
-        pass
-
-class AnnealedGaussianProcess(RandomProcess):
-    def __init__(self, mu, sigma, sigma_min, n_steps_annealing):
-        self.mu = mu
-        self.sigma = sigma
-        self.n_steps = 0
-
-        if sigma_min is not None:
-            self.m = -float(sigma - sigma_min) / float(n_steps_annealing)
-            self.c = sigma
-            self.sigma_min = sigma_min
+    Reward function for the RL agent.
+    right: whether the final guess is right
+    done: whether it is the termination of IS module
+    """
+    if done==True:
+        if right==True:
+            r = 1.0
         else:
-            self.m = 0.
-            self.c = sigma
-            self.sigma_min = sigma
+            r = 0.0
+    else:
+        r = 0.0
+    return r
 
-    @property
-    def current_sigma(self):
-        sigma = max(self.sigma_min, self.m * float(self.n_steps) + self.c)
-        return sigma
+def reward_func_intrinsic(posterior, posterior_la, mode='KL', r_upper=0.5, ratio=0.1):
+    if mode == 'KL':
+        r = np.abs(entropy(pk=posterior, qk=posterior_la, base=2)) * ratio
+        # r = np.abs(entropy(pk=posterior_la, qk=posterior, base=2)) * ratio
+    elif mode == 'MSE':
+        distance = (posterior - posterior_la) ** 2
+        r = np.mean(distance) * ratio
+    else:
+        raise RuntimeError
+    return max(r, r_upper)
+
+class LinearSchedule(object):
+    def __init__(self, schedule_timesteps, final_p, initial_p=0.01):
+        """Linear interpolation between initial_p and final_p over
+        schedule_timesteps. After this many timesteps pass final_p is
+        returned.
+        Parameters
+        ----------
+        schedule_timesteps: int
+            Number of timesteps for which to linearly anneal initial_p
+            to final_p
+        initial_p: float
+            initial output value
+        final_p: float
+            final output value
+        """
+        self.schedule_timesteps = schedule_timesteps
+        self.final_p            = final_p
+        self.initial_p          = initial_p
+        self.step               = (final_p - initial_p)/schedule_timesteps
+
+    def value(self, eps):
+        """See Schedule.value"""
+        new_eps = min(eps + self.step, self.final_p)
+        assert new_eps >= self.initial_p 
+        return new_eps
 
 
-# Based on http://math.stackexchange.com/questions/1287634/implementing-ornstein-uhlenbeck-in-matlab
-class OrnsteinUhlenbeckProcess(AnnealedGaussianProcess):
-    def __init__(self, theta, mu=0., sigma=1., dt=1e-2, x0=None, size=1, sigma_min=None, n_steps_annealing=1000):
-        super(OrnsteinUhlenbeckProcess, self).__init__(mu=mu, sigma=sigma, sigma_min=sigma_min, n_steps_annealing=n_steps_annealing)
-        self.theta = theta
-        self.mu = mu
-        self.dt = dt
-        self.x0 = x0
-        self.size = size
-        self.reset_states()
+class RingBuffer(object):
+    def __init__(self, maxlen):
+        self.maxlen = maxlen
+        self.start = 0
+        self.length = 0
+        self.data = [None for _ in range(maxlen)]
 
-    def sample(self):
-        x = self.x_prev + self.theta * (self.mu - self.x_prev) * self.dt + self.current_sigma * np.sqrt(self.dt) * np.random.normal(size=self.size)
-        self.x_prev = x
-        self.n_steps += 1
-        return x
+    def __len__(self):
+        return self.length
 
-    def reset_states(self):
-        self.x_prev = self.x0 if self.x0 is not None else np.zeros(self.size)
+    def __getitem__(self, idx):
+        if idx < 0 or idx >= self.length:
+            raise KeyError()
+        return self.data[(self.start + idx) % self.maxlen]
+
+    def get_data(self):
+        return self.data[:self.length]
+
+    def append(self, v):
+        # print(v, type(v))
+        assert isinstance(v, np.ndarray) or isinstance(v, float) or isinstance(v, bool), "v_type:{}".format(type(v))
+        if self.length < self.maxlen:
+            # We have space, simply increase the length.
+            self.length += 1
+        elif self.length == self.maxlen:
+            # No space, "remove" the first item.
+            self.start = (self.start + 1) % self.maxlen
+        else:
+            # This should never happen.
+            raise RuntimeError()
+        self.data[(self.start + self.length - 1) % self.maxlen] = v
+    
+
+def count_param(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+
+
+
+
+

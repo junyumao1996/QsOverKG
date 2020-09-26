@@ -1,188 +1,116 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-#
-
 from abc import ABC, abstractmethod
 from typing import Tuple, List, Dict
+
 import torch
 from torch import nn
+from torch import optim
+import numpy as np
+import wandb
+
+from external_agents.kbc.datasets import Dataset_simple
+from external_agents.kbc.models import CP, ComplEx
+from external_agents.kbc.regularizers import F2, N3
+from external_agents.kbc.optimizers import KBCOptimizer
 
 
-class KBCModel(nn.Module, ABC):
-    @abstractmethod
-    def get_rhs(self, chunk_begin: int, chunk_size: int):
-        pass
+class KA_Config(object):
+    def __init__(self):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = 'ComplEx'   # 'ComplEx' 'CP' 
+        self.regularizer = 'N3'
+        self.optimizer = 'Adagrad'
+        self.max_epochs = 30    # 30
+        self.inc_epochs = 4 
+        self.valid = 5
+        self.rank = 16          # Complex will double this rank
+        self.batch_size = 128   # 100
+        self.reg = 1e-2
+        self.init = 1e-3
+        self.learning_rate = 1e-1
+        self.decay1 = 0.9
+        self.decay2 = 0.999
 
-    @abstractmethod
-    def get_queries(self, queries: torch.Tensor):
-        pass
+class KA_Agent():
+    def __init__(self, data, to_skip):
+        args = KA_Config()
+        self.args = args
+        self.dataset = Dataset_simple(data, to_skip)
+        self.examples = torch.from_numpy(self.dataset.get_train().astype('int64'))
+        self.model = {
+            'CP': lambda: CP(self.dataset.get_shape(), args.rank, args.init),
+            'ComplEx': lambda: ComplEx(self.dataset.get_shape(), args.rank, args.init),
+            }[args.model]()
+        self.model.to(args.device)
+        self.regularizer = {
+            'F2': F2(args.reg),
+            'N3': N3(args.reg),
+            }[args.regularizer]
+        self.optim_method = {
+            'Adagrad': lambda: optim.Adagrad(self.model.parameters(), lr=args.learning_rate),
+            'Adam': lambda: optim.Adam(self.model.parameters(), lr=args.learning_rate, betas=(args.decay1, args.decay2)),
+            'SGD': lambda: optim.SGD(self.model.parameters(), lr=args.learning_rate)
+            }[args.optimizer]()
+        self.optimizer = KBCOptimizer(self.model, self.regularizer, self.optim_method, args.batch_size, False)
+        self.n_update = 0
 
-    @abstractmethod
-    def score(self, x: torch.Tensor):
-        pass
+    def dataset_reload_train(self, dataset, to_skip):
+        self.dataset = Dataset_simple(dataset, to_skip)
+        self.examples = torch.from_numpy(self.dataset.get_train().astype('int64'))
+        curve = self.train()
+        return curve
 
-    def get_ranking(
-            self, queries: torch.Tensor,
-            filters: Dict[Tuple[int, int], List[int]],
-            batch_size: int = 1000, chunk_size: int = -1
-    ):
+    def train(self):
+        if self.n_update == 0:
+            n_epoch = self.args.max_epochs
+        else: 
+            n_epoch = self.args.inc_epochs
+
+        curve = {'MRR':[] , 'hits':[]}
+        for e in range(n_epoch):
+            cur_loss = self.optimizer.epoch(self.examples)
+            self.n_update += 1
+            # if e == n_epoch - 1:
+            #     train = avg_both(*self.dataset.eval(self.model, 50000))
+            #     curve['MRR'].append(train['MRR'])
+            #     curve['hits'].append(train['hits@[1,3,10]'].numpy())
+        return curve
+
+    def _score(self, queries):
         """
-        Returns filtered ranking for each queries.
-        :param queries: a torch.LongTensor of triples (lhs, rel, rhs)
-        :param filters: filters[(lhs, rel)] gives the rhs to filter from ranking
-        :param batch_size: maximum number of queries processed at once
-        :param chunk_size: maximum number of candidates processed at once
-        :return:
+        queries: np.array of shape (n_query, 3)
         """
-        if chunk_size < 0:
-            chunk_size = self.sizes[2]
-        ranks = torch.ones(len(queries))
-        with torch.no_grad():
-            c_begin = 0
-            while c_begin < self.sizes[2]:
-                b_begin = 0
-                rhs = self.get_rhs(c_begin, chunk_size)
-                while b_begin < len(queries):
-                    these_queries = queries[b_begin:b_begin + batch_size]
+        x = torch.from_numpy(queries.astype('int64')).to(self.args.device)
+        scores = self.model.score(x)
+        return scores
 
-                    q = self.get_queries(these_queries)
+    def _rank(self, queries, k=1):
+        """
+        k: top k entries with highest score
+        """
+        scores = self._score(queries)
+        if k == 1:
+            top_idx = scores.max(0)[1]
+        else:
+            top_idx = scores.sort(0, True)[1][:k, :]          # of shape (k, 1)
+        return top_idx.view(-1).cpu().numpy()                 # of shape (k)
 
-                    scores = q @ rhs
-                    targets = self.score(these_queries)
+    def one_circle(self, candidate_set, action_mask=None):
+        """
+        unsure_set: np.array of candidate entries
+        """
+        idx = self._rank(candidate_set)
+        candidate = candidate_set[idx].reshape(-1)
+        rel, rhs = candidate[1], candidate[2]
+        return [rel, rhs]
 
-                    # set filtered and true scores to -1e6 to be ignored
-                    # take care that scores are chunked
-                    for i, query in enumerate(these_queries):
-                        filter_out = filters[(query[0].item(), query[1].item())]
-                        filter_out += [queries[b_begin + i, 2].item()]
-                        if chunk_size < self.sizes[2]:
-                            filter_in_chunk = [
-                                int(x - c_begin) for x in filter_out
-                                if c_begin <= x < c_begin + chunk_size
-                            ]
-                            scores[i, torch.LongTensor(filter_in_chunk)] = -1e6
-                        else:
-                            scores[i, torch.LongTensor(filter_out)] = -1e6
-                    ranks[b_begin:b_begin + batch_size] += torch.sum(
-                        (scores >= targets).float(), dim=1
-                    ).cpu()
-
-                    b_begin += batch_size
-
-                c_begin += chunk_size
-        return ranks
-
-
-class CP(KBCModel):
-    def __init__(
-            self, sizes: Tuple[int, int, int], rank: int,
-            init_size: float = 1e-3
-    ):
-        super(CP, self).__init__()
-        self.sizes = sizes
-        self.rank = rank
-
-        self.lhs = nn.Embedding(sizes[0], rank, sparse=True)
-        self.rel = nn.Embedding(sizes[1], rank, sparse=True)
-        self.rhs = nn.Embedding(sizes[2], rank, sparse=True)
-
-        self.lhs.weight.data *= init_size
-        self.rel.weight.data *= init_size
-        self.rhs.weight.data *= init_size
-
-    def score(self, x):
-        lhs = self.lhs(x[:, 0])
-        rel = self.rel(x[:, 1])
-        rhs = self.rhs(x[:, 2])
-        print("0:", x.shape)
-        print("1", lhs.shape)
-        a = torch.sum(lhs * rel * rhs, 1, keepdim=True)
-        print("2", a.shape)
-        # exit()
-
-        return torch.sum(lhs * rel * rhs, 1, keepdim=True)
-
-    def forward(self, x):
-        lhs = self.lhs(x[:, 0])
-        rel = self.rel(x[:, 1])
-        rhs = self.rhs(x[:, 2])
-        return (lhs * rel) @ self.rhs.weight.t(), (lhs, rel, rhs)
-
-    def get_rhs(self, chunk_begin: int, chunk_size: int):
-        return self.rhs.weight.data[
-            chunk_begin:chunk_begin + chunk_size
-        ].transpose(0, 1)
-
-    def get_queries(self, queries: torch.Tensor):
-        return self.lhs(queries[:, 0]).data * self.rel(queries[:, 1]).data
-
-
-class ComplEx(KBCModel):
-    def __init__(
-            self, sizes: Tuple[int, int, int], rank: int,
-            init_size: float = 1e-3
-    ):
-        super(ComplEx, self).__init__()
-        self.sizes = sizes
-        self.rank = rank
-
-        self.embeddings = nn.ModuleList([
-            nn.Embedding(s, 2 * rank, sparse=True)
-            for s in sizes[:2]
-        ])
-        self.embeddings[0].weight.data *= init_size
-        self.embeddings[1].weight.data *= init_size
-
-    def score(self, x):
-        lhs = self.embeddings[0](x[:, 0])
-        rel = self.embeddings[1](x[:, 1])
-        rhs = self.embeddings[0](x[:, 2])
-
-        lhs = lhs[:, :self.rank], lhs[:, self.rank:]
-        rel = rel[:, :self.rank], rel[:, self.rank:]
-        rhs = rhs[:, :self.rank], rhs[:, self.rank:]
-
-        return torch.sum(
-            (lhs[0] * rel[0] - lhs[1] * rel[1]) * rhs[0] +
-            (lhs[0] * rel[1] + lhs[1] * rel[0]) * rhs[1],
-            1, keepdim=True
-        )
-
-    def forward(self, x):
-        lhs = self.embeddings[0](x[:, 0])
-        rel = self.embeddings[1](x[:, 1])
-        rhs = self.embeddings[0](x[:, 2])
-
-        lhs = lhs[:, :self.rank], lhs[:, self.rank:]
-        rel = rel[:, :self.rank], rel[:, self.rank:]
-        rhs = rhs[:, :self.rank], rhs[:, self.rank:]
-
-        to_score = self.embeddings[0].weight
-        to_score = to_score[:, :self.rank], to_score[:, self.rank:]
-        return (
-            (lhs[0] * rel[0] - lhs[1] * rel[1]) @ to_score[0].transpose(0, 1) +
-            (lhs[0] * rel[1] + lhs[1] * rel[0]) @ to_score[1].transpose(0, 1)
-        ), (
-            torch.sqrt(lhs[0] ** 2 + lhs[1] ** 2),
-            torch.sqrt(rel[0] ** 2 + rel[1] ** 2),
-            torch.sqrt(rhs[0] ** 2 + rhs[1] ** 2)
-        )
-
-    def get_rhs(self, chunk_begin: int, chunk_size: int):
-        return self.embeddings[0].weight.data[
-            chunk_begin:chunk_begin + chunk_size
-        ].transpose(0, 1)
-
-    def get_queries(self, queries: torch.Tensor):
-        lhs = self.embeddings[0](queries[:, 0])
-        rel = self.embeddings[1](queries[:, 1])
-        lhs = lhs[:, :self.rank], lhs[:, self.rank:]
-        rel = rel[:, :self.rank], rel[:, self.rank:]
-
-        return torch.cat([
-            lhs[0] * rel[0] - lhs[1] * rel[1],
-            lhs[0] * rel[1] + lhs[1] * rel[0]
-        ], 1)
+        
+def avg_both(mrrs: Dict[str, float], hits: Dict[str, torch.FloatTensor]):
+    """
+    aggregate metrics for missing lhs and rhs
+    :param mrrs: d
+    :param hits:
+    :return:
+    """
+    m = (mrrs['lhs'] + mrrs['rhs']) / 2.
+    h = (hits['lhs'] + hits['rhs']) / 2.
+    return {'MRR': m, 'hits@[1,3,10]': h}

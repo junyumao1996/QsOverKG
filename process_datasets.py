@@ -78,7 +78,6 @@ def prepare_dataset(path, name):
         out.close()
 
     print("creating filtering lists")
-
     # create filtering files
     to_skip = {'lhs': defaultdict(set), 'rhs': defaultdict(set)}
     for f in files:
@@ -117,7 +116,7 @@ def prepare_dataset(path, name):
 
 if __name__ == "__main__":
     # datasets = ['FB15K', 'WN', 'WN18RR', 'FB237', 'YAGO3-10', 'UMLS', 'KINSHIP', 'NATIONS']
-    datasets = ['FB237']
+    datasets = ['YAGO3-10', 'UMLS']
     for d in datasets:
         print("Preparing dataset {}".format(d))
         try:

@@ -2,9 +2,9 @@
 ### Overview
 This project partially contributes to the full outcome of Junyu Mao's master project, "Learning to Ask over Knowledge Graph: Reinforcement Learning for Game-Based Interactive Knowledge Acquisition", at Univeristy College London, providing codes to reproduce the work.
 #### Learning-to-Ask-and-Balance
-![](https://i.imgur.com/rC1wsXX.jpg)
+![](https://i.imgur.com/rC1wsXX.jpg=200x)
 
-#### RL-based IS 
+#### RL-based Information Seeking (IS)
 ![](https://i.imgur.com/LGlma6I.png)
 
 ### Dependencies
