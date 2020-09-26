@@ -2,10 +2,10 @@
 ### Overview
 This project partially contributes to the full outcome of Junyu Mao's master project at Univeristy College London, "*Learning to Ask over Knowledge Graph: Reinforcement Learning for Game-Based Interactive Knowledge Acquisition*", providing codes to reproduce the work.
 #### Learning-to-Ask-and-Balance (LAB) Framework
-![](https://i.imgur.com/rC1wsXX.jpg=200x){width=20%}
+![](https://i.imgur.com/rC1wsXX.jpg){:height="30%" width="30%"}
 
 #### RL-based Information Seeking (IS)
-![](https://i.imgur.com/LGlma6I.png){width=20%}
+![](https://i.imgur.com/LGlma6I.png){:height="50%" width="50%"}
 
 ## Dependencies
 Python 3.6
