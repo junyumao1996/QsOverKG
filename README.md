@@ -14,6 +14,10 @@ Python 3.6
 
 <br>
 
+
+### License
+MIT License
+
 ### Prerequisites 
 Clone the repository to local
 ```
@@ -40,7 +44,15 @@ python process_datasets.py
 <br>
 
 ## Run
+For the result of a complete game loop using (LAB-WOLPDPG + LAB-ComplEx + Balancer), run the following in the root directory
 ```
 python main.py
 ```
 <br>
+
+
+## References
+Some repositories are used with local modifications for our study:
+* Deep RL tutorials <https://github.com/qfettes/DeepRL-Tutorials>
+* Wolpteringer training <https://github.com/ChangyWen/wolpertinger_ddpg>
+* Canonical Tensor Decomposition for KBC <https://github.com/facebookresearch/kbc>
